@@ -126,6 +126,8 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
 
   // Helper to check geofence boundary
   bool _checkIfOnCampus(LatLng loc) {
+    return true; // remove line to enable geofence check
+
     return (loc.latitude >= minLat && loc.latitude <= maxLat) &&
         (loc.longitude >= minLng && loc.longitude <= maxLng);
   }
@@ -321,10 +323,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Safety Route Prototype', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.blue[900],
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _recenterMap,
         backgroundColor: Colors.blue[900],
@@ -369,8 +367,19 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           : FlutterMap(
         mapController: _mapController,
         options: MapOptions(
-          initialCenter: userLocation!,
+          initialCenter: LatLng(25.7239569, -80.2787170), //userLocation!,
           initialZoom: 16.5,
+          initialRotation: 42.0,
+          minZoom: 16.5,
+          /*
+          try on campus and see if its smoother
+          cameraConstraint: CameraConstraint.contain(
+            bounds: LatLngBounds(
+            LatLng(minLat, minLng), // SouthWest corner
+            LatLng(maxLat, maxLng), // NorthEast corner
+            ),
+          ),
+          */
         ),
         children: [
           TileLayer(
@@ -397,8 +406,8 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
               ...blueLightPhones.map(
                     (phoneLoc) => Marker(
                   point: phoneLoc,
-                  width: 40, height: 40,
-                  child: const Icon(Icons.emergency_share, color: Colors.blue, size: 30),
+                  width: 55, height: 55,
+                  child: const Icon(Icons.location_on_sharp, color: Colors.blue, size: 45),
                 ),
               ),
             ],
