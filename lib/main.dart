@@ -128,8 +128,10 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   bool _checkIfOnCampus(LatLng loc) {
     return true; // remove line to enable geofence check
 
+    /*
     return (loc.latitude >= minLat && loc.latitude <= maxLat) &&
         (loc.longitude >= minLng && loc.longitude <= maxLng);
+     */
   }
 
   // --- 1. BUILD THE GRAPH ---
@@ -384,7 +386,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.campussafety',
+            userAgentPackageName: 'com.example.campus-safety',
             tileProvider: CancellableNetworkTileProvider(),
           ),
           PolylineLayer(
@@ -405,9 +407,16 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
               ),
               ...blueLightPhones.map(
                     (phoneLoc) => Marker(
+                      width: 40,
+                      height: 40,
+                      rotate: true,
                   point: phoneLoc,
-                  width: 55, height: 55,
-                  child: const Icon(Icons.location_on_sharp, color: Colors.blue, size: 45),
+                  child: Card(
+                      margin: EdgeInsets.zero,
+                      shape: CircleBorder(),
+                      elevation: 5,
+                      color: Colors.white,
+                      child: Icon(Icons.location_on, color: Colors.blueAccent, size: 35)),
                 ),
               ),
             ],
