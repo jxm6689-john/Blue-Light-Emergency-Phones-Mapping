@@ -38,6 +38,8 @@ dependencies:
   latlong2: ^0.9.0
   geolocator: ^11.0.0      # Add this line
   flutter_map_cancellable_tile_provider: ^2.0.0
+  http: ^1.2.0           # For downloading OSM Map Graph
+  collection: ^1.18.0    # For the Dijkstra Priority Queue
 
 dev_dependencies:
   flutter_test:
