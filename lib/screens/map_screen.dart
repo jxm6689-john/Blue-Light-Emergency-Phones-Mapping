@@ -193,12 +193,23 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           initialZoom: 16.5,
           initialRotation: 42.0,
           minZoom: 16.5,
+          maxZoom: 23
         ),
         children: [
           // BASE LAYER: Normal Street Map (Always loading in the background)
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.campus-safety',
+          ),
+
+          // INTERMEDIATE LAYER: Solid gray background to hide the street map
+          // while satellite tiles are loading during fast zooms
+          AnimatedOpacity(
+            opacity: _isSatelliteMode ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: Container(
+              color: Colors.grey.shade400, // Adjust the shade of gray if desired
+            ),
           ),
 
           // TOP LAYER: Satellite Map (Loads simultaneously, opacity controls visibility)
@@ -215,7 +226,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
             polylines: [
               Polyline(
                 points: calculatedPath,
-                color: Colors.green,
+                color: Colors.blue,
                 strokeWidth: 5.0,
               ),
             ],
