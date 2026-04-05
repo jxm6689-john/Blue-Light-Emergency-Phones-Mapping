@@ -40,6 +40,7 @@ dependencies:
   flutter_map_cancellable_tile_provider: ^2.0.0
   http: ^1.2.0           # For downloading OSM Map Graph
   collection: ^1.18.0    # For the Dijkstra Priority Queue
+  font_awesome_flutter: ^11.0.0
 
 dev_dependencies:
   flutter_test:

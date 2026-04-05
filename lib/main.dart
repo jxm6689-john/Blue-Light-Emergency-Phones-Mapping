@@ -223,37 +223,54 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   }
 
   // --- 2. GPS TRACKING & GEOFENCING ---
+// --- 2. GPS TRACKING & GEOFENCING ---
   Future<void> _startLiveLocationTracking() async {
-    setState(() => _loadingStatus = "Acquiring GPS Signal...");
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    try {
+      setState(() => _loadingStatus = "Acquiring GPS Signal...");
 
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
-
-    _positionStreamSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5),
-    ).listen((Position? position) {
-      if (position != null && mounted) {
-        LatLng newLoc = LatLng(position.latitude, position.longitude);
-        bool onCampus = _checkIfOnCampus(newLoc);
-
-        setState(() {
-          userLocation = newLoc;
-          _isUserOnCampus = onCampus;
-
-          // Only calculate if they are on campus and map is ready
-          if (_isUserOnCampus && _isGraphLoaded) {
-            _calculatePathToNearestPhone();
-          }
-        });
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _loadingStatus = "Error: Location services are disabled. Please turn on GPS.");
+        return;
       }
-    });
-  }
 
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _loadingStatus = "Error: Location permission denied.");
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _loadingStatus = "Error: Location permissions are permanently denied. Please enable in settings.");
+        return;
+      }
+
+      _positionStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5),
+      ).listen((Position? position) {
+        if (position != null && mounted) {
+          LatLng newLoc = LatLng(position.latitude, position.longitude);
+          bool onCampus = _checkIfOnCampus(newLoc);
+
+          setState(() {
+            userLocation = newLoc;
+            _isUserOnCampus = onCampus;
+
+            // Only calculate if they are on campus and map is ready
+            if (_isUserOnCampus && _isGraphLoaded) {
+              _calculatePathToNearestPhone();
+            }
+          });
+        }
+      });
+    } catch (e) {
+      // Catches MissingPluginException or permission definition errors
+      setState(() => _loadingStatus = "System Error: \n$e");
+    }
+  }
   // --- 3. DIJKSTRA'S ALGORITHM ---
   // Temporary memory for Dijkstra algorithm
   final Map<int, double> _distances = {};
@@ -328,7 +345,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _recenterMap,
         backgroundColor: Colors.blue[900],
-        child: const Icon(Icons.my_location, color: Colors.white),
+        child: const Icon(Icons.location_searching, color: Colors.white),
       ),
       // State 1: Off Campus (Geofence triggered)
       body: !_isUserOnCampus
@@ -416,7 +433,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                       shape: CircleBorder(),
                       elevation: 5,
                       color: Colors.white,
-                      child: Icon(Icons.location_on, color: Colors.blueAccent, size: 35)),
+                      child: Center(child: Icon(Icons.location_on, color: Colors.blueAccent, size: 30, fill: 1.0))),
                 ),
               ),
             ],
