@@ -36,6 +36,9 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   String _loadingStatus = "Initializing...";
   List<GraphNode> _graphNodesList = [];
 
+  // Added state for tracking map/satellite mode
+  bool _isSatelliteMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -115,10 +118,31 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _recenterMap,
-        backgroundColor: Colors.blue[900],
-        child: const Icon(Icons.location_searching, color: Colors.white),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: () {
+              // Toggle satellite mode
+              setState(() {
+                _isSatelliteMode = !_isSatelliteMode;
+              });
+            },
+            backgroundColor: Colors.blue[900],
+            // Switch icons based on current mode
+            child: Icon(
+                _isSatelliteMode ? Icons.map_sharp : Icons.satellite_alt_sharp,
+                color: Colors.white,
+                size: 27
+            ),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            onPressed: _recenterMap,
+            backgroundColor: Colors.blue[900],
+            child: const Icon(Icons.my_location_sharp, color: Colors.white, size: 27),
+          ),
+        ],
       ),
 
       // State 1: Off Campus (Geofence triggered)
@@ -171,10 +195,22 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           minZoom: 16.5,
         ),
         children: [
+          // BASE LAYER: Normal Street Map (Always loading in the background)
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.campus-safety',
           ),
+
+          // TOP LAYER: Satellite Map (Loads simultaneously, opacity controls visibility)
+          AnimatedOpacity(
+            opacity: _isSatelliteMode ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300), // Smooth fade transition
+            child: TileLayer(
+              urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+              userAgentPackageName: 'com.example.campus-safety',
+            ),
+          ),
+
           PolylineLayer(
             polylines: [
               Polyline(
