@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:collection/collection.dart';
 
@@ -222,7 +221,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
     return nearest;
   }
 
-  // --- 2. GPS TRACKING & GEOFENCING ---
 // --- 2. GPS TRACKING & GEOFENCING ---
   Future<void> _startLiveLocationTracking() async {
     try {
@@ -390,21 +388,11 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           initialZoom: 16.5,
           initialRotation: 42.0,
           minZoom: 16.5,
-          /*
-          try on campus and see if its smoother
-          cameraConstraint: CameraConstraint.contain(
-            bounds: LatLngBounds(
-            LatLng(minLat, minLng), // SouthWest corner
-            LatLng(maxLat, maxLng), // NorthEast corner
-            ),
-          ),
-          */
         ),
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.campus-safety',
-            tileProvider: CancellableNetworkTileProvider(),
           ),
           PolylineLayer(
             polylines: [
