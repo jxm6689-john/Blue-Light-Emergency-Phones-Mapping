@@ -88,9 +88,11 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
       path = _routingService.calculatePathToNearestPhone(userLocation!, _graphNodesList);
     }
 
-    // FIX: Clear the old path if the new calculation fails
+    // Clear cached polylines when route changes
     setState(() {
       calculatedPath = path ?? [];
+      _cachedPolylines = null;
+      _cachedRoutePoints = null;
     });
   }
 
@@ -124,12 +126,16 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
     if (userLocation != null) _mapController.move(userLocation!, 16.5);
   }
 
-  // --- NEW LIGHT LEVEL & GRADIENT LOGIC ---
+  // --- OPTIMIZED POLYLINE RENDERING ---
+
+  /// Cached polylines to avoid recalculating on every rebuild
+  List<Polyline>? _cachedPolylines;
+  List<LatLng>? _cachedRoutePoints;
 
   // Define the bounding box for the specific section
   final LatLngBounds specialSectionBounds = LatLngBounds(
-    const LatLng(25.714585572558533, -80.285733794313), // Placeholder: Replace with actual SW coordinate
-    const LatLng(25.711808623312717, -80.28326643625026), // Placeholder: Replace with actual NE coordinate
+    const LatLng(25.714585572558533, -80.285733794313),
+    const LatLng(25.711808623312717, -80.28326643625026),
   );
 
   bool _isInSpecialSection(LatLng point) {
@@ -137,69 +143,67 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   }
 
   double _getPlaceholderLightLevel(LatLng point) {
-    return 0.5; // Replace with your actual light level or ML model output later
+    return 0.5;
   }
 
   Color _getSegmentColor(LatLng point) {
     if (_isInSpecialSection(point)) {
-      double lightLevel = _getPlaceholderLightLevel(point);
-      // Interpolates smoothly between Yellow and Red
+      final lightLevel = _getPlaceholderLightLevel(point);
       return Color.lerp(Colors.yellow, Colors.red, lightLevel) ?? Colors.yellow;
     }
-    // Default color for the rest of the campus
     return _isDestinationMode ? Colors.green : Colors.blue;
   }
 
+  /// Optimized polyline generation with caching and batching
   List<Polyline> _generateRoutedPolylines(List<LatLng> routePoints) {
     if (routePoints.isEmpty || routePoints.length < 2) return [];
 
-    List<Polyline> polylines = [];
+    // Return cached result if route hasn't changed
+    if (_cachedPolylines != null && 
+        _cachedRoutePoints != null &&
+        listEquals(_cachedRoutePoints, routePoints)) {
+      return _cachedPolylines!;
+    }
 
-    // 1. Initialize tracking for the first batch
-    List<LatLng> currentBatchPoints = [routePoints[0]];
-    Color currentBatchColor = _getSegmentColor(routePoints[0]);
+    final polylines = <Polyline>[];
+    
+    // Batch points by color to minimize Polyline objects
+    var currentBatchPoints = <LatLng>[routePoints[0]];
+    var currentBatchColor = _getSegmentColor(routePoints[0]);
 
     for (int i = 0; i < routePoints.length - 1; i++) {
-      LatLng nextPoint = routePoints[i + 1];
-      Color nextPointColor = _getSegmentColor(nextPoint);
+      final nextPoint = routePoints[i + 1];
+      final nextPointColor = _getSegmentColor(nextPoint);
 
-      // 2. If the color is the same, continue the current batch
       if (nextPointColor == currentBatchColor) {
         currentBatchPoints.add(nextPoint);
       } else {
-        // 3. Color has changed! Finalize the current batch
-        // We add the transition point to both segments to ensure no gaps
         currentBatchPoints.add(nextPoint);
-        polylines.add(
-          Polyline(
-            points: List.from(currentBatchPoints),
-            color: currentBatchColor,
-            strokeWidth: 5.0,
-            strokeCap: StrokeCap.round, //
-            strokeJoin: StrokeJoin.round, //
-          ),
-        );
-
-        // 4. Reset for the next color group
+        polylines.add(_createPolyline(currentBatchPoints, currentBatchColor));
         currentBatchPoints = [nextPoint];
         currentBatchColor = nextPointColor;
       }
     }
 
-    // 5. Don't forget to add the final remaining segment
     if (currentBatchPoints.length > 1) {
-      polylines.add(
-        Polyline(
-          points: currentBatchPoints,
-          color: currentBatchColor,
-          strokeWidth: 5.0,
-          strokeCap: StrokeCap.round,
-          strokeJoin: StrokeJoin.round,
-        ),
-      );
+      polylines.add(_createPolyline(currentBatchPoints, currentBatchColor));
     }
 
+    // Cache the result
+    _cachedPolylines = polylines;
+    _cachedRoutePoints = routePoints;
+
     return polylines;
+  }
+
+  Polyline _createPolyline(List<LatLng> points, Color color) {
+    return Polyline(
+      points: points,
+      color: color,
+      strokeWidth: 5.0,
+      strokeCap: StrokeCap.round,
+      strokeJoin: StrokeJoin.round,
+    );
   }
 
   // NEW: Helper method to show the confirmation dialog
