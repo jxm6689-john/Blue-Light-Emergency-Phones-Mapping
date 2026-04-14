@@ -47,7 +47,7 @@ class RoutingService {
       final dLat = target.latitude - previousLocation.latitude;
       final dLon = target.longitude - previousLocation.longitude;
       headingVector = math.Point(dLat, dLon);
-      final magnitude = headingVector.distance;
+      final magnitude = math.sqrt(dLat * dLat + dLon * dLon);
       if (magnitude > 0) {
         headingVector = math.Point(
           headingVector.x / magnitude,
