@@ -5,11 +5,20 @@ import 'package:blue_light_emergency_phones_mapping/models/graph_model.dart';
 class QueueItem {
   final GraphNode node;
   final double distance;
-  QueueItem(this.node, this.distance);
+  final double fScore; // For A* algorithm (g + h)
+  QueueItem(this.node, this.distance, {this.fScore = 0});
 }
 
 class RoutingService {
   final Distance _distanceCalc = const Distance();
+  
+  // Cache for graph distances to avoid redundant computations
+  Map<int, double>? _cachedDistancesFromEnd;
+  GraphNode? _cachedEndNode;
+  
+  // Configurable detour threshold parameters
+  static const double _detourBaseBuffer = 50.0; // meters
+  static const double _detourPercentageMultiplier = 1.3; // 30% detour max
 
   // Snaps arbitrary coordinates to the physical graph
   GraphNode findNearestNode(LatLng target, List<GraphNode> nodes) {
@@ -25,29 +34,63 @@ class RoutingService {
     }
     return nearest;
   }
+  
+  // A* heuristic function (Euclidean distance)
+  double _heuristic(GraphNode node, GraphNode goal) {
+    return _distanceCalc(node.position, goal.position);
+  }
+  
+  // Validate route for unrealistic jumps
+  bool _isValidRoute(List<LatLng> path) {
+    if (path.length < 2) return false;
+    // Check for unrealistic jumps (>100m between consecutive points)
+    for (int i = 0; i < path.length - 1; i++) {
+      if (_distanceCalc(path[i], path[i+1]) > 100) return false;
+    }
+    return true;
+  }
+  
+  // Calculate configurable detour threshold
+  double _calculateDetourThreshold(double baseDistance) {
+    return (baseDistance * _detourPercentageMultiplier) + _detourBaseBuffer;
+  }
 
-  // Normal Mode: Executes Dijkstra's Algorithm to find the nearest phone
-// Normal Mode: Executes Dijkstra's Algorithm to find the nearest phone
+  // Normal Mode: Executes A* Algorithm to find the nearest phone
   List<LatLng>? calculatePathToNearestPhone(LatLng startLocation, List<GraphNode> graphNodesList) {
     if (graphNodesList.isEmpty) return null;
 
     GraphNode startNode = findNearestNode(startLocation, graphNodesList);
-    Map<int, double> distances = {};
+    
+    // Find nearest phone for heuristic calculation
+    GraphNode? nearestPhone;
+    double minPhoneDist = double.infinity;
+    for (var node in graphNodesList) {
+      if (node.isPhone) {
+        double dist = _heuristic(startNode, node);
+        if (dist < minPhoneDist) {
+          minPhoneDist = dist;
+          nearestPhone = node;
+        }
+      }
+    }
+    
+    if (nearestPhone == null) return null;
+
+    Map<int, double> gScores = {}; // Actual cost from start
     Map<int, GraphNode> previous = {};
     Set<int> visited = {};
 
-    // CORRECTED: PriorityQueue now compares the frozen distance in QueueItem
     PriorityQueue<QueueItem> queue = PriorityQueue<QueueItem>(
-            (a, b) => a.distance.compareTo(b.distance)
+      (a, b) => a.fScore.compareTo(b.fScore)
     );
 
-    distances[startNode.id] = 0;
-    queue.add(QueueItem(startNode, 0));
+    gScores[startNode.id] = 0;
+    double hScore = _heuristic(startNode, nearestPhone);
+    queue.add(QueueItem(startNode, 0, fScore: hScore));
 
     GraphNode? targetPhoneNode;
 
     while (queue.isNotEmpty) {
-      // Extract the node from the wrapper
       GraphNode current = queue.removeFirst().node;
 
       if (current.isPhone) {
@@ -61,13 +104,13 @@ class RoutingService {
       for (GraphEdge edge in current.edges) {
         if (visited.contains(edge.target.id)) continue;
 
-        double newDist = distances[current.id]! + edge.distance;
+        double newDist = gScores[current.id]! + edge.distance;
 
-        if (newDist < (distances[edge.target.id] ?? double.infinity)) {
-          distances[edge.target.id] = newDist;
+        if (newDist < (gScores[edge.target.id] ?? double.infinity)) {
+          gScores[edge.target.id] = newDist;
           previous[edge.target.id] = current;
-          // CORRECTED: Wrap the target and its new distance in a QueueItem
-          queue.add(QueueItem(edge.target, newDist));
+          double hScore = _heuristic(edge.target, nearestPhone);
+          queue.add(QueueItem(edge.target, newDist, fScore: newDist + hScore));
         }
       }
     }
@@ -79,27 +122,27 @@ class RoutingService {
         path.add(curr.position);
         curr = previous[curr.id];
       }
-      return path.reversed.toList();
+      List<LatLng> result = path.reversed.toList();
+      return _isValidRoute(result) ? result : null;
     }
     return null;
   }
 
-  // Helper: Standard point-to-point path calculation
-// Helper: Standard point-to-point path calculation
+  // Helper: Standard point-to-point path calculation using A*
   List<LatLng> _calculateDijkstraPath(GraphNode startNode, GraphNode endNode) {
     if (startNode.id == endNode.id) return [startNode.position];
 
-    Map<int, double> distances = {};
+    Map<int, double> gScores = {};
     Map<int, GraphNode> previous = {};
     Set<int> visited = {};
 
-    // CORRECTED: PriorityQueue using QueueItem
     PriorityQueue<QueueItem> queue = PriorityQueue<QueueItem>(
-            (a, b) => a.distance.compareTo(b.distance)
+      (a, b) => a.fScore.compareTo(b.fScore)
     );
 
-    distances[startNode.id] = 0;
-    queue.add(QueueItem(startNode, 0));
+    gScores[startNode.id] = 0;
+    double hScore = _heuristic(startNode, endNode);
+    queue.add(QueueItem(startNode, 0, fScore: hScore));
 
     while (queue.isNotEmpty) {
       GraphNode current = queue.removeFirst().node;
@@ -111,13 +154,13 @@ class RoutingService {
       for (GraphEdge edge in current.edges) {
         if (visited.contains(edge.target.id)) continue;
 
-        double newDist = distances[current.id]! + edge.distance;
+        double newDist = gScores[current.id]! + edge.distance;
 
-        if (newDist < (distances[edge.target.id] ?? double.infinity)) {
-          distances[edge.target.id] = newDist;
+        if (newDist < (gScores[edge.target.id] ?? double.infinity)) {
+          gScores[edge.target.id] = newDist;
           previous[edge.target.id] = current;
-          // CORRECTED: Add to queue via QueueItem
-          queue.add(QueueItem(edge.target, newDist));
+          double hScore = _heuristic(edge.target, endNode);
+          queue.add(QueueItem(edge.target, newDist, fScore: newDist + hScore));
         }
       }
     }
@@ -134,15 +177,18 @@ class RoutingService {
     return [];
   }
 
-  // NEW HELPER: Generates a map of actual WALKING distances from a starting node to all other nodes.
-// NEW HELPER: Generates a map of actual WALKING distances from a starting node to all other nodes.
+  // Cached helper: Generates a map of actual WALKING distances from a starting node
   Map<int, double> _getGraphDistances(GraphNode startNode) {
+    // Return cached result if available
+    if (_cachedEndNode == startNode && _cachedDistancesFromEnd != null) {
+      return _cachedDistancesFromEnd!;
+    }
+    
     Map<int, double> distances = {};
     Set<int> visited = {};
 
-    // CORRECTED: PriorityQueue using QueueItem
     PriorityQueue<QueueItem> queue = PriorityQueue<QueueItem>(
-            (a, b) => a.distance.compareTo(b.distance)
+      (a, b) => a.distance.compareTo(b.distance)
     );
 
     distances[startNode.id] = 0;
@@ -161,17 +207,29 @@ class RoutingService {
 
         if (newDist < (distances[edge.target.id] ?? double.infinity)) {
           distances[edge.target.id] = newDist;
-          // CORRECTED: Add to queue via QueueItem
           queue.add(QueueItem(edge.target, newDist));
         }
       }
     }
+    
+    // Cache the result
+    _cachedEndNode = startNode;
+    _cachedDistancesFromEnd = distances;
     return distances;
+  }
+  
+  // Clear cache when needed
+  void clearCache() {
+    _cachedEndNode = null;
+    _cachedDistancesFromEnd = null;
   }
 
   // Custom Destination Mode: Hop between waypoints using true map distances
   List<LatLng>? calculatePathToDestination(LatLng startLocation, LatLng endLocation, List<GraphNode> graphNodesList) {
     if (graphNodesList.isEmpty) return null;
+
+    // Clear cache for fresh calculation
+    clearCache();
 
     GraphNode currentNode = findNearestNode(startLocation, graphNodesList);
     GraphNode endNode = findNearestNode(endLocation, graphNodesList);
@@ -197,14 +255,12 @@ class RoutingService {
         double phoneDistToEnd = distFromEnd[phone.id] ?? double.infinity;
 
         // FILTER 1: Strict Forward Progress
-        // Walking from this phone to the end MUST be shorter than walking from our current spot to the end.
         if (phoneDistToEnd < currentDistToEnd) {
 
-          // FILTER 2: Anti-Zigzag Detour Protection
-          // Prevent the algorithm from picking a phone that requires a massive detour to reach.
-          // We allow the path to be extended by 50% (multiplier 1.5) to hit a phone, but no more.
+          // FILTER 2: Anti-Zigzag Detour Protection with configurable threshold
           double detourDistance = phoneDistFromCurrent + phoneDistToEnd;
-          if (detourDistance <= (currentDistToEnd * 1.5) + 25.0) {
+          double detourThreshold = _calculateDetourThreshold(currentDistToEnd);
+          if (detourDistance <= detourThreshold) {
 
             // Find the closest valid phone
             if (phoneDistFromCurrent < minWalkingDistToPhone) {
@@ -216,7 +272,6 @@ class RoutingService {
       }
 
       // TERMINATION:
-      // If we run out of valid phones, OR the destination is a shorter walk than the closest valid phone.
       if (nextPhone == null || currentDistToEnd <= minWalkingDistToPhone) {
         List<LatLng> segment = _calculateDijkstraPath(currentNode, endNode);
         _appendSegment(completePath, segment);

@@ -5,8 +5,16 @@ class GraphNode {
   final LatLng position;
   bool isPhone = false; // The magic stopping condition
   List<GraphEdge> edges = [];
+  double? lightLevel; // For safety scoring
+  String? zoneType; // "indoor", "outdoor", "covered"
 
   GraphNode(this.id, this.position);
+  
+  @override
+  bool operator ==(Object other) => other is GraphNode && other.id == id;
+  
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class GraphEdge {

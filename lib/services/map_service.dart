@@ -12,15 +12,29 @@ class MapService {
   static const double minLng = -80.2865;
   static const double maxLng = -80.2720;
   final Distance _distanceCalc = const Distance();
+  
+  // Graph caching to avoid redundant downloads
+  List<GraphNode>? _cachedGraph;
+  DateTime? _cacheTimestamp;
+  static const Duration _cacheDuration = Duration(hours: 24);
 
   Future<List<GraphNode>> fetchAndBuildGraph(Function(String) onStatusUpdate) async {
+    // Return cached graph if available and not expired
+    if (_cachedGraph != null && 
+        _cacheTimestamp != null && 
+        DateTime.now().difference(_cacheTimestamp!) < _cacheDuration) {
+      onStatusUpdate("Using cached navigation network...");
+      return _cachedGraph!;
+    }
+    
     onStatusUpdate("Downloading Campus Pathways...");
 
-    // Added ["area"!~"yes"] to prevent the path from tracing the perimeter of plazas
+    // Added timeout and maxsize parameters for better reliability
     final String query = '''
-      [out:json];
+      [out:json][timeout:25][maxsize:104857600];
       (
-          way["highway"~"footway|path|pedestrian"]["area"!~"yes"]($minLat,$minLng,$maxLat,$maxLng);      );
+          way["highway"~"footway|path|pedestrian"]["area"!~"yes"]($minLat,$minLng,$maxLat,$maxLng);
+      );
       (._;>;);
       out body;
     ''';
@@ -75,7 +89,7 @@ class MapService {
       phoneNodes.add(nearestNode);
     }
 
-    // FIX 2: Flood-fill to find ONLY nodes connected to the phone network
+    // Flood-fill to find ONLY nodes connected to the phone network
     Set<int> reachableNodeIds = {};
     List<GraphNode> queue = List.from(phoneNodes);
     for (var p in phoneNodes) reachableNodeIds.add(p.id);
@@ -93,11 +107,42 @@ class MapService {
 
     // Erase all isolated nodes so we never snap to them
     nodesList.removeWhere((node) => !reachableNodeIds.contains(node.id));
+    
+    // Cache the result
+    _cachedGraph = nodesList;
+    _cacheTimestamp = DateTime.now();
 
     return nodesList;
   }
-
+  
+  // Real geofencing using point-in-polygon test
   bool checkIfOnCampus(LatLng loc) {
-    return true; // Geofence check
+    // Define campus boundary polygon (simplified for demo)
+    final campusPolygon = [
+      LatLng(minLat, minLng),
+      LatLng(minLat, maxLng),
+      LatLng(maxLat, maxLng),
+      LatLng(maxLat, minLng),
+    ];
+    return _isPointInPolygon(loc, campusPolygon);
+  }
+  
+  // Point-in-polygon ray casting algorithm
+  bool _isPointInPolygon(LatLng point, List<LatLng> polygon) {
+    bool isInside = false;
+    int i = 0;
+    int j = polygon.length - 1;
+    
+    while (i < polygon.length) {
+      if (((polygon[i].latitude > point.latitude) != (polygon[j].latitude > point.latitude)) &&
+          (point.longitude < (polygon[j].longitude - polygon[i].longitude) * 
+           (point.latitude - polygon[i].latitude) / 
+           (polygon[j].latitude - polygon[i].latitude) + polygon[i].longitude)) {
+        isInside = !isInside;
+      }
+      j = i++;
+    }
+    
+    return isInside;
   }
 }
