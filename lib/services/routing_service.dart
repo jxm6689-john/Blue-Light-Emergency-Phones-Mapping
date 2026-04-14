@@ -2,6 +2,12 @@ import 'package:latlong2/latlong.dart';
 import 'package:collection/collection.dart';
 import 'package:blue_light_emergency_phones_mapping/models/graph_model.dart';
 
+class QueueItem {
+  final GraphNode node;
+  final double distance;
+  QueueItem(this.node, this.distance);
+}
+
 class RoutingService {
   final Distance _distanceCalc = const Distance();
 
@@ -21,6 +27,7 @@ class RoutingService {
   }
 
   // Normal Mode: Executes Dijkstra's Algorithm to find the nearest phone
+// Normal Mode: Executes Dijkstra's Algorithm to find the nearest phone
   List<LatLng>? calculatePathToNearestPhone(LatLng startLocation, List<GraphNode> graphNodesList) {
     if (graphNodesList.isEmpty) return null;
 
@@ -29,17 +36,19 @@ class RoutingService {
     Map<int, GraphNode> previous = {};
     Set<int> visited = {};
 
-    PriorityQueue<GraphNode> queue = PriorityQueue((a, b) =>
-        (distances[a.id] ?? double.infinity).compareTo(distances[b.id] ?? double.infinity)
+    // CORRECTED: PriorityQueue now compares the frozen distance in QueueItem
+    PriorityQueue<QueueItem> queue = PriorityQueue<QueueItem>(
+            (a, b) => a.distance.compareTo(b.distance)
     );
 
     distances[startNode.id] = 0;
-    queue.add(startNode);
+    queue.add(QueueItem(startNode, 0));
 
     GraphNode? targetPhoneNode;
 
     while (queue.isNotEmpty) {
-      GraphNode current = queue.removeFirst();
+      // Extract the node from the wrapper
+      GraphNode current = queue.removeFirst().node;
 
       if (current.isPhone) {
         targetPhoneNode = current;
@@ -57,7 +66,8 @@ class RoutingService {
         if (newDist < (distances[edge.target.id] ?? double.infinity)) {
           distances[edge.target.id] = newDist;
           previous[edge.target.id] = current;
-          queue.add(edge.target);
+          // CORRECTED: Wrap the target and its new distance in a QueueItem
+          queue.add(QueueItem(edge.target, newDist));
         }
       }
     }
@@ -75,6 +85,7 @@ class RoutingService {
   }
 
   // Helper: Standard point-to-point path calculation
+// Helper: Standard point-to-point path calculation
   List<LatLng> _calculateDijkstraPath(GraphNode startNode, GraphNode endNode) {
     if (startNode.id == endNode.id) return [startNode.position];
 
@@ -82,15 +93,16 @@ class RoutingService {
     Map<int, GraphNode> previous = {};
     Set<int> visited = {};
 
-    PriorityQueue<GraphNode> queue = PriorityQueue((a, b) =>
-        (distances[a.id] ?? double.infinity).compareTo(distances[b.id] ?? double.infinity)
+    // CORRECTED: PriorityQueue using QueueItem
+    PriorityQueue<QueueItem> queue = PriorityQueue<QueueItem>(
+            (a, b) => a.distance.compareTo(b.distance)
     );
 
     distances[startNode.id] = 0;
-    queue.add(startNode);
+    queue.add(QueueItem(startNode, 0));
 
     while (queue.isNotEmpty) {
-      GraphNode current = queue.removeFirst();
+      GraphNode current = queue.removeFirst().node;
 
       if (current.id == endNode.id) break;
       if (visited.contains(current.id)) continue;
@@ -104,7 +116,8 @@ class RoutingService {
         if (newDist < (distances[edge.target.id] ?? double.infinity)) {
           distances[edge.target.id] = newDist;
           previous[edge.target.id] = current;
-          queue.add(edge.target);
+          // CORRECTED: Add to queue via QueueItem
+          queue.add(QueueItem(edge.target, newDist));
         }
       }
     }
@@ -122,19 +135,21 @@ class RoutingService {
   }
 
   // NEW HELPER: Generates a map of actual WALKING distances from a starting node to all other nodes.
+// NEW HELPER: Generates a map of actual WALKING distances from a starting node to all other nodes.
   Map<int, double> _getGraphDistances(GraphNode startNode) {
     Map<int, double> distances = {};
     Set<int> visited = {};
 
-    PriorityQueue<GraphNode> queue = PriorityQueue((a, b) =>
-        (distances[a.id] ?? double.infinity).compareTo(distances[b.id] ?? double.infinity)
+    // CORRECTED: PriorityQueue using QueueItem
+    PriorityQueue<QueueItem> queue = PriorityQueue<QueueItem>(
+            (a, b) => a.distance.compareTo(b.distance)
     );
 
     distances[startNode.id] = 0;
-    queue.add(startNode);
+    queue.add(QueueItem(startNode, 0));
 
     while (queue.isNotEmpty) {
-      GraphNode current = queue.removeFirst();
+      GraphNode current = queue.removeFirst().node;
 
       if (visited.contains(current.id)) continue;
       visited.add(current.id);
@@ -146,7 +161,8 @@ class RoutingService {
 
         if (newDist < (distances[edge.target.id] ?? double.infinity)) {
           distances[edge.target.id] = newDist;
-          queue.add(edge.target);
+          // CORRECTED: Add to queue via QueueItem
+          queue.add(QueueItem(edge.target, newDist));
         }
       }
     }

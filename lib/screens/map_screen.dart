@@ -83,18 +83,15 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
 
     List<LatLng>? path;
     if (_isDestinationMode && destinationLocation != null) {
-      // Route to tapped destination
       path = _routingService.calculatePathToDestination(userLocation!, destinationLocation!, _graphNodesList);
     } else {
-      // Default: Route to nearest phone
       path = _routingService.calculatePathToNearestPhone(userLocation!, _graphNodesList);
     }
 
-    if (path != null) {
-      setState(() {
-        calculatedPath = path!;
-      });
-    }
+    // FIX: Clear the old path if the new calculation fails
+    setState(() {
+      calculatedPath = path ?? [];
+    });
   }
 
   Future<void> _startLiveLocationTracking() async {
@@ -167,7 +164,10 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
         Polyline(
           points: [startPoint, endPoint],
           color: segmentColor,
-          strokeWidth: 5.0, // Using strokeWidth to match flutter_map syntax
+          strokeWidth: 5.0,
+          // ADD THESE TWO LINES: Rounds the corners so segments stitch together smoothly
+          strokeCap: StrokeCap.round,
+          strokeJoin: StrokeJoin.round,
         ),
       );
     }
