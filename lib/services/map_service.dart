@@ -20,8 +20,7 @@ class MapService {
     final String query = '''
       [out:json];
       (
-        way["highway"~"footway|path|pedestrian|service|residential|cycleway"]["area"!~"yes"]($minLat,$minLng,$maxLat,$maxLng);
-      );
+          way["highway"~"footway|path|pedestrian"]["area"!~"yes"]($minLat,$minLng,$maxLat,$maxLng);      );
       (._;>;);
       out body;
     ''';

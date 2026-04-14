@@ -151,26 +151,54 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   }
 
   List<Polyline> _generateRoutedPolylines(List<LatLng> routePoints) {
-    if (routePoints.isEmpty) return [];
+    if (routePoints.isEmpty || routePoints.length < 2) return [];
 
     List<Polyline> polylines = [];
+
+    // 1. Initialize tracking for the first batch
+    List<LatLng> currentBatchPoints = [routePoints[0]];
+    Color currentBatchColor = _getSegmentColor(routePoints[0]);
+
     for (int i = 0; i < routePoints.length - 1; i++) {
-      LatLng startPoint = routePoints[i];
-      LatLng endPoint = routePoints[i + 1];
+      LatLng nextPoint = routePoints[i + 1];
+      Color nextPointColor = _getSegmentColor(nextPoint);
 
-      Color segmentColor = _getSegmentColor(startPoint);
+      // 2. If the color is the same, continue the current batch
+      if (nextPointColor == currentBatchColor) {
+        currentBatchPoints.add(nextPoint);
+      } else {
+        // 3. Color has changed! Finalize the current batch
+        // We add the transition point to both segments to ensure no gaps
+        currentBatchPoints.add(nextPoint);
+        polylines.add(
+          Polyline(
+            points: List.from(currentBatchPoints),
+            color: currentBatchColor,
+            strokeWidth: 5.0,
+            strokeCap: StrokeCap.round, //
+            strokeJoin: StrokeJoin.round, //
+          ),
+        );
 
+        // 4. Reset for the next color group
+        currentBatchPoints = [nextPoint];
+        currentBatchColor = nextPointColor;
+      }
+    }
+
+    // 5. Don't forget to add the final remaining segment
+    if (currentBatchPoints.length > 1) {
       polylines.add(
         Polyline(
-          points: [startPoint, endPoint],
-          color: segmentColor,
+          points: currentBatchPoints,
+          color: currentBatchColor,
           strokeWidth: 5.0,
-          // ADD THESE TWO LINES: Rounds the corners so segments stitch together smoothly
           strokeCap: StrokeCap.round,
           strokeJoin: StrokeJoin.round,
         ),
       );
     }
+
     return polylines;
   }
 
