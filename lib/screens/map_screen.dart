@@ -36,8 +36,11 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   String _loadingStatus = "Initializing...";
   List<GraphNode> _graphNodesList = [];
 
-  // Added state for tracking map/satellite mode
   bool _isSatelliteMode = false;
+
+  // State for Custom Destination Routing
+  bool _isDestinationMode = false;
+  LatLng? destinationLocation;
 
   @override
   void initState() {
@@ -54,7 +57,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
 
   Future<void> _initializeSystem() async {
     try {
-      // 1. Fetch the Overpass API data and build the graph
       _graphNodesList = await _mapService.fetchAndBuildGraph((status) {
         if (mounted) {
           setState(() => _loadingStatus = status);
@@ -68,12 +70,30 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
         });
       }
 
-      // 2. Start asking for GPS permissions and stream location
       await _startLiveLocationTracking();
     } catch (e) {
       if (mounted) {
         setState(() => _loadingStatus = e.toString());
       }
+    }
+  }
+
+  void _calculateActiveRoute() {
+    if (userLocation == null || !_isUserOnCampus || !_isGraphLoaded) return;
+
+    List<LatLng>? path;
+    if (_isDestinationMode && destinationLocation != null) {
+      // Route to tapped destination
+      path = _routingService.calculatePathToDestination(userLocation!, destinationLocation!, _graphNodesList);
+    } else {
+      // Default: Route to nearest phone
+      path = _routingService.calculatePathToNearestPhone(userLocation!, _graphNodesList);
+    }
+
+    if (path != null) {
+      setState(() {
+        calculatedPath = path!;
+      });
     }
   }
 
@@ -92,14 +112,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           setState(() {
             userLocation = newLoc;
             _isUserOnCampus = _mapService.checkIfOnCampus(newLoc);
-
-            // Calculate new path when position updates, if everything is ready
-            if (_isUserOnCampus && _isGraphLoaded) {
-              final path = _routingService.calculatePathToNearestPhone(newLoc, _graphNodesList);
-              if (path != null) {
-                calculatedPath = path;
-              }
-            }
+            _calculateActiveRoute(); // Trigger recalculation
           });
         }
       });
@@ -114,6 +127,85 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
     if (userLocation != null) _mapController.move(userLocation!, 16.5);
   }
 
+  // --- NEW LIGHT LEVEL & GRADIENT LOGIC ---
+
+  // Define the bounding box for the specific section
+  final LatLngBounds specialSectionBounds = LatLngBounds(
+    const LatLng(25.714585572558533, -80.285733794313), // Placeholder: Replace with actual SW coordinate
+    const LatLng(25.711808623312717, -80.28326643625026), // Placeholder: Replace with actual NE coordinate
+  );
+
+  bool _isInSpecialSection(LatLng point) {
+    return specialSectionBounds.contains(point);
+  }
+
+  double _getPlaceholderLightLevel(LatLng point) {
+    return 0.5; // Replace with your actual light level or ML model output later
+  }
+
+  Color _getSegmentColor(LatLng point) {
+    if (_isInSpecialSection(point)) {
+      double lightLevel = _getPlaceholderLightLevel(point);
+      // Interpolates smoothly between Yellow and Red
+      return Color.lerp(Colors.yellow, Colors.red, lightLevel) ?? Colors.yellow;
+    }
+    // Default color for the rest of the campus
+    return _isDestinationMode ? Colors.green : Colors.blue;
+  }
+
+  List<Polyline> _generateRoutedPolylines(List<LatLng> routePoints) {
+    if (routePoints.isEmpty) return [];
+
+    List<Polyline> polylines = [];
+    for (int i = 0; i < routePoints.length - 1; i++) {
+      LatLng startPoint = routePoints[i];
+      LatLng endPoint = routePoints[i + 1];
+
+      Color segmentColor = _getSegmentColor(startPoint);
+
+      polylines.add(
+        Polyline(
+          points: [startPoint, endPoint],
+          color: segmentColor,
+          strokeWidth: 5.0, // Using strokeWidth to match flutter_map syntax
+        ),
+      );
+    }
+    return polylines;
+  }
+
+  // NEW: Helper method to show the confirmation dialog
+  void _showRouteConfirmationDialog(LatLng point) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Destination'),
+          content: const Text('Would you like to route through the blue light network to this location?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Dismiss the dialog
+              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Dismiss the dialog
+                setState(() {
+                  destinationLocation = point;
+                  _calculateActiveRoute(); // Trigger the route generation
+                });
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Route', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // --- UI RENDERING ---
   @override
   Widget build(BuildContext context) {
@@ -123,13 +215,29 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
         children: [
           FloatingActionButton(
             onPressed: () {
-              // Toggle satellite mode
+              setState(() {
+                _isDestinationMode = !_isDestinationMode;
+                if (!_isDestinationMode) {
+                  destinationLocation = null; // Clear destination when disabled
+                }
+                _calculateActiveRoute(); // Recalculate based on new mode
+              });
+            },
+            backgroundColor: _isDestinationMode ? Colors.green : Colors.blue[900],
+            child: Icon(
+                _isDestinationMode ? Icons.directions_walk : Icons.emergency,
+                color: Colors.white,
+                size: 27
+            ),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            onPressed: () {
               setState(() {
                 _isSatelliteMode = !_isSatelliteMode;
               });
             },
             backgroundColor: Colors.blue[900],
-            // Switch icons based on current mode
             child: Icon(
                 _isSatelliteMode ? Icons.map_sharp : Icons.satellite_alt_sharp,
                 color: Colors.white,
@@ -145,7 +253,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
         ],
       ),
 
-      // State 1: Off Campus (Geofence triggered)
       body: !_isUserOnCampus
           ? Center(
         child: Column(
@@ -168,8 +275,6 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           ],
         ),
       )
-
-      // State 2: Loading Map/GPS data
           : (!_isGraphLoaded || userLocation == null)
           ? Center(
         child: Column(
@@ -184,56 +289,50 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           ],
         ),
       )
-
-      // State 3: Normal Functionality
           : FlutterMap(
         mapController: _mapController,
         options: MapOptions(
-          initialCenter: LatLng(25.7239569, -80.2787170), // UM Campus center
+          initialCenter: userLocation!,
           initialZoom: 16.5,
           initialRotation: 42.0,
           minZoom: 16.5,
-          maxZoom: 23
+          maxZoom: 23,
+          // CHANGED: Replaced onTap with onLongPress and integrated the dialog
+          onLongPress: (tapPosition, point) {
+            if (_isDestinationMode && _isGraphLoaded) {
+              _showRouteConfirmationDialog(point);
+            }
+          },
+          onTap: (tapPosition, point) {
+            print('📍 Map clicked at: Latitude: ${point.latitude}, Longitude: ${point.longitude}');
+          },
         ),
         children: [
-          // BASE LAYER: Normal Street Map (Always loading in the background)
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.campus-safety',
           ),
-
-          // INTERMEDIATE LAYER: Solid gray background to hide the street map
-          // while satellite tiles are loading during fast zooms
           AnimatedOpacity(
             opacity: _isSatelliteMode ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
             child: Container(
-              color: Colors.grey.shade400, // Adjust the shade of gray if desired
+              color: Colors.grey.shade400,
             ),
           ),
-
-          // TOP LAYER: Satellite Map (Loads simultaneously, opacity controls visibility)
           AnimatedOpacity(
             opacity: _isSatelliteMode ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300), // Smooth fade transition
+            duration: const Duration(milliseconds: 300),
             child: TileLayer(
               urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
               userAgentPackageName: 'com.example.campus-safety',
             ),
           ),
-
           PolylineLayer(
-            polylines: [
-              Polyline(
-                points: calculatedPath,
-                color: Colors.blue,
-                strokeWidth: 5.0,
-              ),
-            ],
+            // Replace the single blue polyline with the segmented, color-coded ones
+            polylines: _generateRoutedPolylines(calculatedPath),
           ),
           MarkerLayer(
             markers: [
-              // User location marker
               Marker(
                 point: userLocation!,
                 width: 40,
@@ -241,7 +340,22 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                 child: const Icon(Icons.person_pin_circle, color: Colors.red, size: 40),
               ),
 
-              // Blue light phones markers
+              if (destinationLocation != null && _isDestinationMode)
+                Marker(
+                  point: destinationLocation!,
+                  width: 40,
+                  height: 40,
+                  child: const Card(
+                      margin: EdgeInsets.zero,
+                      shape: CircleBorder(),
+                      elevation: 5,
+                      color: Colors.white,
+                      child: Center(
+                          child: Icon(Icons.flag_circle, color: Colors.green, size: 38),
+                      )
+                  ),
+                ),
+
               ...blueLightPhones.map(
                     (phoneLoc) => Marker(
                   width: 40,
